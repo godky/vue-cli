@@ -121,7 +121,6 @@ module.exports = (api, options) => {
         minify: {
           removeComments: true,
           collapseWhitespace: true,
-          removeAttributeQuotes: true,
           collapseBooleanAttributes: true,
           removeScriptTypeAttributes: true
           // more options:
@@ -151,7 +150,7 @@ module.exports = (api, options) => {
     const multiPageConfig = options.pages
     const htmlPath = api.resolve('public/index.html')
     const defaultHtmlPath = path.resolve(__dirname, 'index-default.html')
-    const publicCopyIgnore = ['.DS_Store']
+    const publicCopyIgnore = ['**/.DS_Store']
 
     if (!multiPageConfig) {
       // default, single page setup.
@@ -159,10 +158,7 @@ module.exports = (api, options) => {
         ? htmlPath
         : defaultHtmlPath
 
-      publicCopyIgnore.push({
-        glob: path.relative(api.resolve('public'), api.resolve(htmlOptions.template)),
-        matchBase: false
-      })
+      publicCopyIgnore.push(api.resolve(htmlOptions.template).replace(/\\/g, '/'))
 
       webpackConfig
         .plugin('html')
@@ -226,10 +222,7 @@ module.exports = (api, options) => {
             ? htmlPath
             : defaultHtmlPath
 
-        publicCopyIgnore.push({
-          glob: path.relative(api.resolve('public'), api.resolve(templatePath)),
-          matchBase: false
-        })
+        publicCopyIgnore.push(api.resolve(templatePath).replace(/\\/g, '/'))
 
         // inject html plugin for the page
         const pageHtmlOptions = Object.assign(
@@ -296,12 +289,16 @@ module.exports = (api, options) => {
     if (!isLegacyBundle && fs.existsSync(publicDir)) {
       webpackConfig
         .plugin('copy')
-          .use(require('copy-webpack-plugin'), [[{
-            from: publicDir,
-            to: outputDir,
-            toType: 'dir',
-            ignore: publicCopyIgnore
-          }]])
+          .use(require('copy-webpack-plugin'), [{
+            patterns: [{
+              from: publicDir,
+              to: outputDir,
+              toType: 'dir',
+              globOptions: {
+                ignore: publicCopyIgnore
+              }
+            }]
+          }])
     }
   })
 }
