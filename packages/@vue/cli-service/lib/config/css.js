@@ -1,6 +1,5 @@
 const fs = require('fs')
 const path = require('path')
-const { semver, warn, pauseSpinner, resumeSpinner } = require('@vue/cli-shared-utils')
 
 const findExisting = (context, files) => {
   for (const file of files) {
@@ -15,25 +14,6 @@ module.exports = (api, rootOptions) => {
     const getAssetPath = require('../util/getAssetPath')
     const shadowMode = !!process.env.VUE_CLI_CSS_SHADOW_MODE
     const isProd = process.env.NODE_ENV === 'production'
-
-    let sassLoaderVersion
-    try {
-      sassLoaderVersion = semver.major(require('sass-loader/package.json').version)
-    } catch (e) {}
-    if (sassLoaderVersion < 8) {
-      pauseSpinner()
-      warn('A new version of sass-loader is available. Please upgrade for best experience.')
-      resumeSpinner()
-    }
-
-    const defaultSassLoaderOptions = {}
-    try {
-      defaultSassLoaderOptions.implementation = require('sass')
-      // since sass-loader 8, fibers will be automatically detected and used
-      if (sassLoaderVersion < 8) {
-        defaultSassLoaderOptions.fiber = require('fibers')
-      }
-    } catch (e) {}
 
     const {
       extract = isProd,
@@ -65,8 +45,8 @@ module.exports = (api, rootOptions) => {
       ? './'
       : '../'.repeat(
         extractOptions.filename
-            .replace(/^\.[\/\\]/, '')
-            .split(/[\/\\]/g)
+            .replace(/^\.[/\\]/, '')
+            .split(/[/\\]/g)
             .length - 1
       )
 
@@ -83,9 +63,11 @@ module.exports = (api, rootOptions) => {
 
     if (!hasPostCSSConfig) {
       loaderOptions.postcss = {
-        plugins: [
-          require('autoprefixer')
-        ]
+        postcssOptions: {
+          plugins: [
+            require('autoprefixer')
+          ]
+        }
       }
     }
 
@@ -129,8 +111,9 @@ module.exports = (api, rootOptions) => {
             .use('extract-css-loader')
             .loader(require('mini-css-extract-plugin').loader)
             .options({
-              hmr: !isProd,
-              publicPath: cssPublicPath
+              publicPath: cssPublicPath,
+              // TODO: enable this option later
+              esModule: false
             })
         } else {
           rule
@@ -171,7 +154,9 @@ module.exports = (api, rootOptions) => {
             .loader(require.resolve('postcss-loader'))
             .options({
               sourceMap,
-              plugins: [require('cssnano')(cssnanoOptions)]
+              postcssOptions: {
+                plugins: [require('cssnano')(cssnanoOptions)]
+              }
             })
         }
 
@@ -200,38 +185,23 @@ module.exports = (api, rootOptions) => {
     createCSSRule('postcss', /\.p(ost)?css$/)
     createCSSRule('scss', /\.scss$/, 'sass-loader', Object.assign(
       {},
-      defaultSassLoaderOptions,
       loaderOptions.scss || loaderOptions.sass
     ))
-    if (sassLoaderVersion < 8) {
-      createCSSRule('sass', /\.sass$/, 'sass-loader', Object.assign(
-        {},
-        defaultSassLoaderOptions,
-        {
-          indentedSyntax: true
-        },
-        loaderOptions.sass
-      ))
-    } else {
-      createCSSRule('sass', /\.sass$/, 'sass-loader', Object.assign(
-        {},
-        defaultSassLoaderOptions,
-        loaderOptions.sass,
-        {
-          sassOptions: Object.assign(
-            {},
-            loaderOptions.sass && loaderOptions.sass.sassOptions,
-            {
-              indentedSyntax: true
-            }
-          )
-        }
-      ))
-    }
+    createCSSRule('sass', /\.sass$/, 'sass-loader', Object.assign(
+      {},
+      loaderOptions.sass,
+      {
+        sassOptions: Object.assign(
+          {},
+          loaderOptions.sass && loaderOptions.sass.sassOptions,
+          {
+            indentedSyntax: true
+          }
+        )
+      }
+    ))
     createCSSRule('less', /\.less$/, 'less-loader', loaderOptions.less)
-    createCSSRule('stylus', /\.styl(us)?$/, 'stylus-loader', Object.assign({
-      preferPathResolver: 'webpack'
-    }, loaderOptions.stylus))
+    createCSSRule('stylus', /\.styl(us)?$/, 'stylus-loader', loaderOptions.stylus)
 
     // inject CSS extraction plugin
     if (shouldExtract) {
@@ -240,14 +210,13 @@ module.exports = (api, rootOptions) => {
           .use(require('mini-css-extract-plugin'), [extractOptions])
 
       // minify extracted CSS
-      if (isProd) {
-        webpackConfig
-          .plugin('optimize-css')
-            .use(require('@intervolga/optimize-cssnano-plugin'), [{
-              sourceMap: rootOptions.productionSourceMap && sourceMap,
-              cssnanoOptions
-            }])
-      }
+      webpackConfig.optimization
+        .minimizer('css')
+          .use(require('css-minimizer-webpack-plugin'), [{
+            parallel: rootOptions.parallel,
+            sourceMap: rootOptions.productionSourceMap && sourceMap,
+            minimizerOptions: cssnanoOptions
+          }])
     }
   })
 }
